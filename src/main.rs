@@ -11,15 +11,8 @@ fn main() {
         uptime: 2.0,
     };
 
-    println!("==GROUND TELEMETRY PROCESSING SYSTEM ==");
-    status(&spacecraft);
+    println!("== GROUND TELEMETRY PROCESSING SYSTEM ==");
+    spacecraft.status();
+    println!(" ======================================= ");
     println!("{} is in {} mode", spacecraft.identifier, spacecraft.mode);
-}
-
-fn status(spacecraft: &Spacecraft) {
-    println!("Spacecraft Identifier: {}", spacecraft.identifier);
-    println!("Mode: {}", spacecraft.mode);
-    println!("Battery Level: {:.1}V", spacecraft.battery_voltage);
-    println!("Temperature: {:.1}F", spacecraft.temperature);
-    println!("Uptime: {:.1} hrs", spacecraft.uptime)
 }
