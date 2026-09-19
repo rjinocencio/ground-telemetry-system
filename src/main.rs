@@ -15,20 +15,37 @@ fn main() {
     println!("== GROUND TELEMETRY PROCESSING SYSTEM ==");
     let mut input = String::new();
 
-    print!("\n> ");
-    io::stdout().flush().expect("Failed to flush stdout");
+    loop {
+        input.clear();
+        print!("> ");
+        io::stdout().flush().expect("Failed to flush stdout");
 
-    io::stdin()
-        .read_line(&mut input)
-        .expect("Failed to read command!");
+        io::stdin()
+            .read_line(&mut input)
+            .expect("Failed to read line!");
 
-    match input.trim() {
-        "status" => spacecraft.print_status(),
-        "help" | "?" => print_help(),
-        "nominal" => spacecraft.set_mode("nominal"),
-        "safe" => spacecraft.set_mode("safe"),
-        "standby" => spacecraft.set_mode("standby"),
-        _ => println!("Command not implemented!"),
+        let input = input.trim();
+        let command = command_parser(input);
+
+        match command {
+            Command::Status => spacecraft.print_status(),
+            Command::Help => print_help(),
+            Command::Nominal => spacecraft.set_mode(SpacecraftMode::Nominal),
+            Command::Safe => spacecraft.set_mode(SpacecraftMode::Safe),
+            Command::Standby => spacecraft.set_mode(SpacecraftMode::Standby),
+            Command::Exit => {
+                println!("Exiting application...");
+                break;
+            }
+            Command::Empty => {
+                println!("Please use \"help\" or \"?\" for list of commands");
+            }
+            Command::Invalid => {
+                println!(
+                    "Command not implemented!\nPlease use \"help\" or \"?\" for list of commands"
+                );
+            }
+        }
     }
 }
 
@@ -40,7 +57,32 @@ fn print_help() {
   nominal      Sets mode to nominal
   safe         Sets mode to safe
   standby      Sets mode to standby
+  exit, quit   Exit the application
 ==========================
 "
     )
+}
+
+fn command_parser(input: &str) -> Command {
+    match input {
+        "status" => Command::Status,
+        "help" | "?" => Command::Help,
+        "nominal" => Command::Nominal,
+        "safe" => Command::Safe,
+        "standby" => Command::Standby,
+        "exit" | "quit" => Command::Exit,
+        "" => Command::Empty,
+        _ => Command::Invalid,
+    }
+}
+
+enum Command {
+    Status,
+    Help,
+    Exit,
+    Nominal,
+    Safe,
+    Standby,
+    Empty,
+    Invalid,
 }

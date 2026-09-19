@@ -28,17 +28,7 @@ impl Spacecraft {
         println!("Uptime: {:.1} hrs", self.uptime)
     }
 
-    pub fn set_mode(&mut self, mode_input: &str) {
-        let mode = match mode_input {
-            "nominal" => SpacecraftMode::Nominal,
-            "safe" => SpacecraftMode::Safe,
-            "standby" => SpacecraftMode::Standby,
-            _ => {
-                println!("Invalid mode!");
-                return;
-            }
-        };
-
+    pub fn set_mode(&mut self, mode: SpacecraftMode) {
         if self.mode == mode {
             println!("Spacecraft already on {:?} mode!", mode);
             return;
