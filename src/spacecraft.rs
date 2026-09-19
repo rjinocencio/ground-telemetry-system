@@ -6,7 +6,7 @@ pub struct Spacecraft {
     pub uptime: f64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum SpacecraftMode {
     Nominal,
     Safe,
@@ -26,5 +26,31 @@ impl Spacecraft {
         println!("Battery Level: {:.1}V", self.battery_voltage);
         println!("Temperature: {:.1}F", self.temperature);
         println!("Uptime: {:.1} hrs", self.uptime)
+    }
+
+    pub fn set_mode(&mut self, mode_input: &str) {
+        let mode = match mode_input {
+            "nominal" => SpacecraftMode::Nominal,
+            "safe" => SpacecraftMode::Safe,
+            "standby" => SpacecraftMode::Standby,
+            _ => {
+                println!("Invalid mode!");
+                return;
+            }
+        };
+
+        if self.mode == mode {
+            println!("Spacecraft already on {:?} mode!", mode);
+            return;
+        }
+
+        println!("== Previous Status ==");
+        self.print_status();
+
+        self.mode = mode;
+
+        println!("===  New Status  ===");
+        self.print_status();
+        println!("=================");
     }
 }

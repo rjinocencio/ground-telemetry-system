@@ -4,7 +4,7 @@ use crate::spacecraft::{Spacecraft, SpacecraftMode};
 use std::io::{self, Write};
 
 fn main() {
-    let spacecraft = Spacecraft {
+    let mut spacecraft = Spacecraft {
         identifier: String::from("SAT-001"),
         mode: SpacecraftMode::Nominal,
         battery_voltage: 28.5,
@@ -25,16 +25,21 @@ fn main() {
     match input.trim() {
         "status" => spacecraft.print_status(),
         "help" | "?" => print_help(),
+        "nominal" => spacecraft.set_mode("nominal"),
+        "safe" => spacecraft.set_mode("safe"),
+        "standby" => spacecraft.set_mode("standby"),
         _ => println!("Command not implemented!"),
     }
 }
 
 fn print_help() {
-    print!(
+    println!(
         r"=== AVAILABLE COMMANDS ===
   help, ?      Display this help menu
   status       Check system status
-  exit, quit   Exit the application
+  nominal      Sets mode to nominal
+  safe         Sets mode to safe
+  standby      Sets mode to standby
 ==========================
 "
     )
