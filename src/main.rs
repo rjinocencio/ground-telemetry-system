@@ -1,6 +1,7 @@
 mod spacecraft;
 
 use crate::spacecraft::{Spacecraft, SpacecraftMode};
+use std::io::{self, Write};
 
 fn main() {
     let spacecraft = Spacecraft {
@@ -12,7 +13,29 @@ fn main() {
     };
 
     println!("== GROUND TELEMETRY PROCESSING SYSTEM ==");
-    spacecraft.print_status();
-    println!(" ======================================= ");
-    println!("{} is in {:?} mode", spacecraft.identifier, spacecraft.mode);
+    let mut input = String::new();
+
+    print!("\n> ");
+    io::stdout().flush().expect("Failed to flush stdout");
+
+    io::stdin()
+        .read_line(&mut input)
+        .expect("Failed to read command!");
+
+    match input.trim() {
+        "status" => spacecraft.print_status(),
+        "help" | "?" => print_help(),
+        _ => println!("Command not implemented!"),
+    }
+}
+
+fn print_help() {
+    print!(
+        r"=== AVAILABLE COMMANDS ===
+  help, ?      Display this help menu
+  status       Check system status
+  exit, quit   Exit the application
+==========================
+"
+    )
 }
