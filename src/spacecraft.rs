@@ -14,33 +14,58 @@ pub enum SpacecraftMode {
 }
 
 impl Spacecraft {
-    pub fn print_status(&self) {
-        let mode = match self.mode {
-            SpacecraftMode::Nominal => "Nominal",
-            SpacecraftMode::Safe => "Safe",
-            SpacecraftMode::Standby => "Standby",
+    pub fn set_mode(&mut self, mode: SpacecraftMode) {
+        self.mode = mode;
+    }
+}
+
+// Tests
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sets_mode_to_nominal() {
+        let mut spacecraft = Spacecraft {
+            identifier: String::from("SAT-001"),
+            mode: SpacecraftMode::Safe,
+            battery_voltage: 28.5,
+            temperature: 68.0,
+            uptime: 2.0,
         };
 
-        println!("Spacecraft Identifier: {}", self.identifier);
-        println!("Mode: {}", mode);
-        println!("Battery Level: {:.1}V", self.battery_voltage);
-        println!("Temperature: {:.1}F", self.temperature);
-        println!("Uptime: {:.1} hrs", self.uptime)
+        spacecraft.set_mode(SpacecraftMode::Nominal);
+
+        assert_eq!(spacecraft.mode, SpacecraftMode::Nominal);
     }
 
-    pub fn set_mode(&mut self, mode: SpacecraftMode) {
-        if self.mode == mode {
-            println!("Spacecraft already on {:?} mode!", mode);
-            return;
-        }
+    #[test]
+    fn sets_mode_to_safe() {
+        let mut spacecraft = Spacecraft {
+            identifier: String::from("SAT-001"),
+            mode: SpacecraftMode::Nominal,
+            battery_voltage: 28.5,
+            temperature: 68.0,
+            uptime: 2.0,
+        };
 
-        println!("== Previous Status ==");
-        self.print_status();
+        spacecraft.set_mode(SpacecraftMode::Safe);
 
-        self.mode = mode;
+        assert_eq!(spacecraft.mode, SpacecraftMode::Safe);
+    }
 
-        println!("===  New Status  ===");
-        self.print_status();
-        println!("=================");
+    #[test]
+    fn sets_mode_to_standby() {
+        let mut spacecraft = Spacecraft {
+            identifier: String::from("SAT-001"),
+            mode: SpacecraftMode::Nominal,
+            battery_voltage: 28.5,
+            temperature: 68.0,
+            uptime: 2.0,
+        };
+
+        spacecraft.set_mode(SpacecraftMode::Standby);
+
+        assert_eq!(spacecraft.mode, SpacecraftMode::Standby);
     }
 }
