@@ -6,7 +6,7 @@ The project is being developed incrementally through a 14-day sprint. Each ticke
 
 ## Current Status
 
-Completed through **Day 07 — Refactor into Modules and Add Unit Tests**.
+Completed through **Day 08 — Split Simulator and Ground Station into Separate Binaries**.
 
 Current functionality includes:
 
@@ -14,26 +14,30 @@ Current functionality includes:
 - Typed spacecraft operating modes
 - Interactive operator CLI
 - Persistent command loop
-- Spacecraft mode transitions
-- Command parsing
+- Typed command parsing
 - Graceful handling of blank and unsupported commands
-- Modularized command and spacecraft logic
+- Modularized command and spacecraft domain logic
 - Automated unit tests for deterministic behavior
+- Separate `spacecraft-sim` and `ground-station` binaries
+- Shared library modules exposed through `lib.rs`
+- Spacecraft state owned only by the simulator process
 
-Networking and PostgreSQL persistence will be introduced in later sprint tickets.
+The two binaries intentionally do **not** communicate yet. Telemetry serialization, TCP communication, and PostgreSQL persistence are introduced in later sprint tickets.
 
 ---
 
 ## Current Commands
 
-| Command        | Description                              |
-| -------------- | ---------------------------------------- |
-| `status`       | Display the current spacecraft telemetry |
-| `help`, `?`    | Display the command help menu            |
-| `nominal`      | Change spacecraft mode to Nominal        |
-| `safe`         | Change spacecraft mode to Safe           |
-| `standby`      | Change spacecraft mode to Standby        |
-| `exit`, `quit` | Exit the application                     |
+The ground station currently recognizes the following commands. Commands that require spacecraft communication are parsed correctly but report that remote communication is not implemented yet.
+
+| Command        | Description                                                            |
+| -------------- | ---------------------------------------------------------------------- |
+| `status`       | Request spacecraft status; remote communication is not implemented yet |
+| `help`, `?`    | Display the command help menu                                          |
+| `nominal`      | Request Nominal mode; remote communication is not implemented yet      |
+| `safe`         | Request Safe mode; remote communication is not implemented yet         |
+| `standby`      | Request Standby mode; remote communication is not implemented yet      |
+| `exit`, `quit` | Exit the ground-station application                                    |
 
 ---
 
@@ -41,20 +45,20 @@ Networking and PostgreSQL persistence will be introduced in later sprint tickets
 
 ```text
 src/
-├── main.rs
+├── lib.rs
 ├── command.rs
-└── spacecraft.rs
+├── spacecraft.rs
+└── bin/
+    ├── ground-station.rs
+    └── spacecraft-sim.rs
 ```
 
-### `main.rs`
+### `lib.rs`
 
-Responsible for application orchestration and terminal I/O:
+Defines the shared library modules used by both binaries:
 
-- Reads operator input
-- Dispatches parsed commands
-- Displays spacecraft status
-- Displays help information
-- Coordinates spacecraft mode transitions
+- `command`
+- `spacecraft`
 
 ### `command.rs`
 
@@ -73,35 +77,74 @@ Contains spacecraft domain state and behavior:
 - `Spacecraft::set_mode`
 - Spacecraft state unit tests
 
+### `bin/ground-station.rs`
+
+Owns operator-facing CLI behavior:
+
+- Reads operator input from stdin
+- Calls `Command::parser`
+- Displays help information
+- Handles blank and unsupported input
+- Handles clean application exit
+- Recognizes spacecraft-related commands without directly owning or mutating spacecraft state
+
+### `bin/spacecraft-sim.rs`
+
+Owns the simulated spacecraft state:
+
+- Creates the `Spacecraft` instance
+- Initializes telemetry values
+- Starts independently from the ground station
+- Does not yet communicate over TCP
+
 ---
 
 ## Running the Project
 
+Run the spacecraft simulator:
+
 ```bash
-cargo run
+cargo run --bin spacecraft-sim
 ```
 
-Example session:
+Current simulator output is similar to:
 
 ```text
-== GROUND TELEMETRY PROCESSING SYSTEM ==
+== SPACECRAFT SIMULATOR ==
+SAT-001 initialized in Nominal mode
+```
+
+Run the ground station in a separate terminal:
+
+```bash
+cargo run --bin ground-station
+```
+
+Example ground-station session:
+
+```text
+== GROUND STATION ==
+> help
+=== AVAILABLE COMMANDS ===
+help, ?      Display this help menu
+status       Check system status
+nominal      Sets mode to nominal
+safe         Sets mode to safe
+standby      Sets mode to standby
+exit, quit   Exit the application
+==========================
+
 > status
-Spacecraft Identifier: SAT-001
-Mode: Nominal
-Battery Level: 28.5 V
-Temperature: 68.0 F
-Uptime: 2.0 hrs
+Spacecraft communication not yet implemented!
 
 > safe
-== Previous Status ==
-...
-=== New Status ===
-Mode: Safe
-...
+Spacecraft communication not yet implemented!
 
 > exit
 Exiting application...
 ```
+
+At this stage, running both programs at the same time does not connect them. Establishing that communication boundary is part of the upcoming networking tickets.
 
 ---
 
@@ -113,10 +156,10 @@ Format the project:
 cargo fmt
 ```
 
-Check compilation:
+Check all binary targets:
 
 ```bash
-cargo check
+cargo check --bins
 ```
 
 Run automated tests:
@@ -359,7 +402,7 @@ Refactored the working CLI before introducing networking.
 
 The application was separated into command parsing, spacecraft domain logic, and application orchestration.
 
-Current layout:
+The Day 7 layout was:
 
 ```text
 src/
@@ -399,18 +442,57 @@ Automated unit tests were added for command parsing, spacecraft mode mutation, a
 
 ---
 
+## Day 08 — Split Simulator and Ground Station into Separate Binaries
+
+**Jira:** `GTPS-9`
+
+### What the ticket was about
+
+Split the previous single-process application into two independently runnable Rust binaries:
+
+- `spacecraft-sim`
+- `ground-station`
+
+The spacecraft simulator now owns the simulated `Spacecraft` state, while the ground station owns operator-facing CLI behavior and command parsing.
+
+Shared types remain in library modules exposed through `lib.rs`.
+
+The two programs intentionally do not communicate yet. This ticket establishes the process boundary that later tickets will connect using serialized telemetry and TCP.
+
+### Concepts learned
+
+- Multiple binary targets in one Cargo package
+- Cargo's `src/bin/` project layout
+- Using `src/lib.rs` as the root of shared library code
+- Sharing modules between independent binary crates
+- Importing shared library modules from binaries
+- Separating domain ownership from operator-interface logic
+- Process boundaries
+- Avoiding duplicated shared code
+- Preserving command parsing without direct spacecraft access
+- Designing architecture before adding transport/networking
+
+### Official Rust references
+
+- [Cargo Guide — Project Layout](https://doc.rust-lang.org/cargo/guide/project-layout.html)
+- [Cargo Reference — Cargo Targets](https://doc.rust-lang.org/cargo/reference/cargo-targets.html)
+- [Rust Book — Chapter 7: Managing Growing Projects with Packages, Crates, and Modules](https://doc.rust-lang.org/book/ch07-00-managing-growing-projects-with-packages-crates-and-modules.html)
+
+---
+
 ## Planned Sprint Direction
 
-The remaining sprint builds toward two separate Rust processes:
+The project now has two separate Rust processes with an intentional communication boundary:
 
 ```text
 ┌─────────────────────┐
 │ Spacecraft Simulator│
 │                     │
+│ Owns Spacecraft     │
 │ State + Telemetry   │
 └──────────┬──────────┘
            │
-           │ TCP
+           │ future TCP
            │
 ┌──────────▼──────────┐
 │   Ground Station    │
@@ -423,9 +505,10 @@ The remaining sprint builds toward two separate Rust processes:
 
 Upcoming work introduces:
 
-- Separate spacecraft and ground-station processes
+- Shared telemetry transport types
+- JSON serialization and deserialization with Serde
 - TCP networking over localhost
-- Telemetry serialization
+- Telemetry streaming
 - Command transmission
 - Command acknowledgements
 - PostgreSQL telemetry persistence
