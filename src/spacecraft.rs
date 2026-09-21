@@ -1,3 +1,6 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Spacecraft {
     pub identifier: String,
     pub mode: SpacecraftMode,
@@ -6,7 +9,7 @@ pub struct Spacecraft {
     pub uptime: f64,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum SpacecraftMode {
     Nominal,
     Safe,
