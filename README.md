@@ -2,11 +2,11 @@
 
 A Rust-based ground software portfolio project built as a hands-on way to learn Rust while exploring spacecraft telemetry, operator command handling, networking, persistence, and software reliability.
 
-The project is being developed incrementally through a 14-day sprint. Each ticket introduces a new Rust or software-engineering concept while advancing the system toward a ground-station CLI communicating with a simulated spacecraft over TCP and persisting telemetry and command history in PostgreSQL.
+The project is being developed incrementally through a 14-day sprint. Each ticket introduces a new Rust or software engineering concept while advancing the system toward a ground-station CLI communicating with a simulated spacecraft over TCP and persisting telemetry and command history in PostgreSQL.
 
 ## Current Status
 
-Completed through **Day 08 — Split Simulator and Ground Station into Separate Binaries**.
+Completed through **Day 09 — Define and Serialize Shared Telemetry as JSON**.
 
 Current functionality includes:
 
@@ -21,14 +21,20 @@ Current functionality includes:
 - Separate `spacecraft-sim` and `ground-station` binaries
 - Shared library modules exposed through `lib.rs`
 - Spacecraft state owned only by the simulator process
+- Shared `TelemetrySnapshot` transport model
+- JSON serialization and deserialization with Serde
+- Telemetry snapshots created from borrowed spacecraft state
+- Round-trip serialization test coverage
 
-The two binaries intentionally do **not** communicate yet. Telemetry serialization, TCP communication, and PostgreSQL persistence are introduced in later sprint tickets.
+The two binaries intentionally do **not** communicate yet. TCP communication, telemetry streaming, command transmission, and PostgreSQL persistence are introduced in later sprint tickets.
 
 ---
 
 ## Current Commands
 
-The ground station currently recognizes the following commands. Commands that require spacecraft communication are parsed correctly but report that remote communication is not implemented yet.
+The ground station currently recognizes the following commands.
+
+Commands that require spacecraft communication are parsed correctly but report that remote communication is not implemented yet.
 
 | Command        | Description                                                            |
 | -------------- | ---------------------------------------------------------------------- |
@@ -48,6 +54,7 @@ src/
 ├── lib.rs
 ├── command.rs
 ├── spacecraft.rs
+├── telemetry.rs
 └── bin/
     ├── ground-station.rs
     └── spacecraft-sim.rs
@@ -55,10 +62,11 @@ src/
 
 ### `lib.rs`
 
-Defines the shared library modules used by both binaries:
+Defines the shared library modules used by the binaries:
 
 - `command`
 - `spacecraft`
+- `telemetry`
 
 ### `command.rs`
 
@@ -77,6 +85,15 @@ Contains spacecraft domain state and behavior:
 - `Spacecraft::set_mode`
 - Spacecraft state unit tests
 
+### `telemetry.rs`
+
+Contains the transport representation for spacecraft telemetry:
+
+- `TelemetrySnapshot`
+- Conversion from borrowed `&Spacecraft`
+- Serde serialization and deserialization support
+- Round-trip JSON serialization tests
+
 ### `bin/ground-station.rs`
 
 Owns operator-facing CLI behavior:
@@ -93,8 +110,10 @@ Owns operator-facing CLI behavior:
 Owns the simulated spacecraft state:
 
 - Creates the `Spacecraft` instance
-- Initializes telemetry values
-- Starts independently from the ground station
+- Initializes spacecraft telemetry values
+- Creates a `TelemetrySnapshot` from spacecraft state
+- Serializes telemetry to JSON
+- Prints serialized telemetry locally
 - Does not yet communicate over TCP
 
 ---
@@ -112,6 +131,7 @@ Current simulator output is similar to:
 ```text
 == SPACECRAFT SIMULATOR ==
 SAT-001 initialized in Nominal mode
+Telemetry: {"spacecraft_id":"SAT-001","mode":"Nominal","battery_voltage":28.5,"temperature":68.0,"uptime":2.0}
 ```
 
 Run the ground station in a separate terminal:
@@ -144,7 +164,9 @@ Spacecraft communication not yet implemented!
 Exiting application...
 ```
 
-At this stage, running both programs at the same time does not connect them. Establishing that communication boundary is part of the upcoming networking tickets.
+At this stage, running both programs at the same time does not connect them.
+
+The spacecraft simulator can now generate a serialized telemetry message, but transmitting that message to the ground station is part of the upcoming networking tickets.
 
 ---
 
@@ -480,16 +502,80 @@ The two programs intentionally do not communicate yet. This ticket establishes t
 
 ---
 
+## Day 09 — Define and Serialize Shared Telemetry as JSON
+
+**Jira:** `GTPS-10`
+
+### What the ticket was about
+
+Introduced a dedicated `TelemetrySnapshot` type to represent spacecraft telemetry intended to cross the process boundary.
+
+The spacecraft simulator continues to own the internal `Spacecraft` state. A telemetry snapshot is created from a borrowed `&Spacecraft`, allowing telemetry to be exported without consuming or transferring ownership of the simulator state.
+
+The snapshot includes:
+
+- Spacecraft identifier
+- Operating mode
+- Battery voltage
+- Temperature
+- Uptime
+
+Serde is used to serialize `TelemetrySnapshot` into compact JSON and deserialize JSON back into the typed Rust representation.
+
+A round-trip unit test verifies that telemetry can be:
+
+```text
+TelemetrySnapshot
+        ↓
+      JSON
+        ↓
+TelemetrySnapshot
+```
+
+without changing the telemetry values.
+
+### Concepts learned
+
+- Separating internal application state from transport data
+- Designing a transport/data-transfer type
+- Serialization and deserialization
+- Serde `Serialize` and `Deserialize`
+- JSON serialization with `serde_json`
+- Creating telemetry from a borrowed `&Spacecraft`
+- Preserving ownership while exporting data
+- Cloning owned `String` data when necessary
+- `Clone` versus `Copy`
+- Making enum values serializable
+- Round-trip serialization testing
+- Using typed data instead of formatted display strings for transport
+
+### Official references
+
+- [Serde — Using derive](https://serde.rs/derive.html)
+- [Serde — Attributes](https://serde.rs/attributes.html)
+- [`serde_json` documentation](https://docs.rs/serde_json/)
+- [Rust Book — 4.1 What Is Ownership?](https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html)
+- [Rust Book — 4.2 References and Borrowing](https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html)
+- [Rust Book — Chapter 5: Using Structs](https://doc.rust-lang.org/book/ch05-00-structs.html)
+- [Rust Book — Chapter 11: Writing Automated Tests](https://doc.rust-lang.org/book/ch11-00-testing.html)
+- [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html)
+- [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html)
+
+---
+
 ## Planned Sprint Direction
 
-The project now has two separate Rust processes with an intentional communication boundary:
+The project now has two separate Rust processes with a shared telemetry representation ready to cross the process boundary:
 
 ```text
 ┌─────────────────────┐
 │ Spacecraft Simulator│
 │                     │
-│ Owns Spacecraft     │
-│ State + Telemetry   │
+│ Spacecraft State    │
+│        ↓            │
+│ TelemetrySnapshot   │
+│        ↓            │
+│       JSON          │
 └──────────┬──────────┘
            │
            │ future TCP
@@ -505,16 +591,23 @@ The project now has two separate Rust processes with an intentional communicatio
 
 Upcoming work introduces:
 
-- Shared telemetry transport types
-- JSON serialization and deserialization with Serde
 - TCP networking over localhost
-- Telemetry streaming
+- Continuous telemetry streaming
 - Command transmission
 - Command acknowledgements
 - PostgreSQL telemetry persistence
 - Command history persistence
 - Reliability and failure handling
 - Final portfolio packaging
+
+Potential post-sprint extensions include:
+
+- Async Rust
+- WebSocket telemetry broadcasting
+- Browser-based operator interface
+- Multiple simulated spacecraft
+- Fault injection and simulated spacecraft anomalies
+- Remote deployment for interactive portfolio demonstrations
 
 ---
 
