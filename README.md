@@ -2,7 +2,7 @@
 
 A Rust-based ground software portfolio project built as a hands-on way to learn Rust while exploring spacecraft telemetry, operator command handling, networking, persistence, and software reliability.
 
-The project is being developed incrementally through a 14-day sprint. Each ticket introduces a new Rust or software engineering concept while advancing the system toward a ground-station CLI communicating with a simulated spacecraft over TCP and persisting telemetry and command history in PostgreSQL.
+The project is being developed incrementally through a 14-day sprint. Each ticket introduces a new Rust or software-engineering concept while advancing the system toward a ground-station CLI communicating with a simulated spacecraft over TCP and persisting telemetry and command history in PostgreSQL.
 
 ## Current Status
 
@@ -25,8 +25,11 @@ Current functionality includes:
 - JSON serialization and deserialization with Serde
 - Telemetry snapshots created from borrowed spacecraft state
 - Round-trip serialization test coverage
+- Real-time spacecraft uptime measured with `Instant`
+- Unix-millisecond timestamps generated for each telemetry snapshot
+- Repeated local telemetry snapshots for observing time progression
 
-The two binaries intentionally do **not** communicate yet. TCP communication, telemetry streaming, command transmission, and PostgreSQL persistence are introduced in later sprint tickets.
+The two binaries intentionally do **not** communicate yet. TCP communication, telemetry streaming between processes, command transmission, and PostgreSQL persistence are introduced in later sprint tickets.
 
 ---
 
@@ -83,6 +86,8 @@ Contains spacecraft domain state and behavior:
 - `Spacecraft`
 - `SpacecraftMode`
 - `Spacecraft::set_mode`
+- `Spacecraft::uptime`
+- Simulator start time stored with `Instant`
 - Spacecraft state unit tests
 
 ### `telemetry.rs`
@@ -92,6 +97,8 @@ Contains the transport representation for spacecraft telemetry:
 - `TelemetrySnapshot`
 - Conversion from borrowed `&Spacecraft`
 - Serde serialization and deserialization support
+- Real-time uptime measurement
+- Unix-millisecond telemetry timestamps
 - Round-trip JSON serialization tests
 
 ### `bin/ground-station.rs`
@@ -111,8 +118,10 @@ Owns the simulated spacecraft state:
 
 - Creates the `Spacecraft` instance
 - Initializes spacecraft telemetry values
-- Creates a `TelemetrySnapshot` from spacecraft state
+- Records simulator start time
+- Creates `TelemetrySnapshot` values from current spacecraft state
 - Serializes telemetry to JSON
+- Generates repeated telemetry snapshots with a delay between samples
 - Prints serialized telemetry locally
 - Does not yet communicate over TCP
 
@@ -131,8 +140,15 @@ Current simulator output is similar to:
 ```text
 == SPACECRAFT SIMULATOR ==
 SAT-001 initialized in Nominal mode
-Telemetry: {"spacecraft_id":"SAT-001","mode":"Nominal","battery_voltage":28.5,"temperature":68.0,"uptime":2.0}
+
+{"spacecraft_id":"SAT-001","mode":"Nominal","battery_voltage":28.5,"temperature":68.0,"uptime_seconds":0.0001,"timestamp_ms":1780000000123}
+
+{"spacecraft_id":"SAT-001","mode":"Nominal","battery_voltage":28.5,"temperature":68.0,"uptime_seconds":1.0003,"timestamp_ms":1780000001124}
+
+{"spacecraft_id":"SAT-001","mode":"Nominal","battery_voltage":28.5,"temperature":68.0,"uptime_seconds":2.0005,"timestamp_ms":1780000002125}
 ```
+
+The simulator currently generates a limited number of local telemetry snapshots separated by a one-second delay so real-time uptime and timestamp behavior can be observed before networking is introduced.
 
 Run the ground station in a separate terminal:
 
@@ -166,7 +182,7 @@ Exiting application...
 
 At this stage, running both programs at the same time does not connect them.
 
-The spacecraft simulator can now generate a serialized telemetry message, but transmitting that message to the ground station is part of the upcoming networking tickets.
+The spacecraft simulator can generate serialized telemetry messages, but transmitting those messages to the ground station is part of the upcoming networking tickets.
 
 ---
 
@@ -188,6 +204,18 @@ Run automated tests:
 
 ```bash
 cargo test
+```
+
+Run the spacecraft simulator:
+
+```bash
+cargo run --bin spacecraft-sim
+```
+
+Run the ground station:
+
+```bash
+cargo run --bin ground-station
 ```
 
 ---
@@ -518,9 +546,17 @@ The snapshot includes:
 - Operating mode
 - Battery voltage
 - Temperature
-- Uptime
+- Real-time uptime
+- Unix-millisecond timestamp
 
 Serde is used to serialize `TelemetrySnapshot` into compact JSON and deserialize JSON back into the typed Rust representation.
+
+Telemetry snapshots also include real timing information:
+
+- `uptime_seconds` is calculated from a monotonic `Instant` recorded when the spacecraft simulator starts.
+- `timestamp_ms` records the wall-clock time when each telemetry snapshot is created as Unix milliseconds.
+
+This keeps simulator runtime measurement separate from the timestamp used to identify when telemetry was generated.
 
 A round-trip unit test verifies that telemetry can be:
 
@@ -533,6 +569,8 @@ TelemetrySnapshot
 ```
 
 without changing the telemetry values.
+
+The spacecraft simulator also generates multiple snapshots with a short delay between each one so changes in uptime and timestamp can be observed locally before TCP transport is introduced.
 
 ### Concepts learned
 
@@ -548,6 +586,15 @@ without changing the telemetry values.
 - Making enum values serializable
 - Round-trip serialization testing
 - Using typed data instead of formatted display strings for transport
+- Measuring elapsed runtime with `Instant`
+- Representing wall-clock time with `SystemTime`
+- Unix epoch timestamps
+- Unix timestamps in milliseconds
+- Difference between monotonic time and wall-clock time
+- Keeping non-serializable runtime state separate from serializable telemetry
+- Introducing delays with `thread::sleep`
+- Representing delays with `Duration`
+- Creating fresh telemetry snapshots over time
 
 ### Official references
 
@@ -560,6 +607,11 @@ without changing the telemetry values.
 - [Rust Book — Chapter 11: Writing Automated Tests](https://doc.rust-lang.org/book/ch11-00-testing.html)
 - [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html)
 - [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html)
+- [`Instant`](https://doc.rust-lang.org/std/time/struct.Instant.html)
+- [`SystemTime`](https://doc.rust-lang.org/std/time/struct.SystemTime.html)
+- [`UNIX_EPOCH`](https://doc.rust-lang.org/std/time/constant.UNIX_EPOCH.html)
+- [`Duration`](https://doc.rust-lang.org/std/time/struct.Duration.html)
+- [`thread::sleep`](https://doc.rust-lang.org/std/thread/fn.sleep.html)
 
 ---
 
@@ -592,7 +644,7 @@ The project now has two separate Rust processes with a shared telemetry represen
 Upcoming work introduces:
 
 - TCP networking over localhost
-- Continuous telemetry streaming
+- Continuous telemetry streaming between processes
 - Command transmission
 - Command acknowledgements
 - PostgreSQL telemetry persistence
@@ -606,6 +658,7 @@ Potential post-sprint extensions include:
 - WebSocket telemetry broadcasting
 - Browser-based operator interface
 - Multiple simulated spacecraft
+- Multiple ground-station clients
 - Fault injection and simulated spacecraft anomalies
 - Remote deployment for interactive portfolio demonstrations
 
