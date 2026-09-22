@@ -1,12 +1,13 @@
 use serde::{Deserialize, Serialize};
+use std::time::Instant;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct Spacecraft {
     pub identifier: String,
     pub mode: SpacecraftMode,
     pub battery_voltage: f64,
     pub temperature: f64,
-    pub uptime: f64,
+    pub started_at: Instant,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone, Copy)]
@@ -19,6 +20,10 @@ pub enum SpacecraftMode {
 impl Spacecraft {
     pub fn set_mode(&mut self, mode: SpacecraftMode) {
         self.mode = mode;
+    }
+
+    pub fn uptime(&self) -> f64 {
+        self.started_at.elapsed().as_secs_f64()
     }
 }
 
@@ -34,7 +39,7 @@ mod tests {
             mode: SpacecraftMode::Safe,
             battery_voltage: 28.5,
             temperature: 68.0,
-            uptime: 2.0,
+            started_at: Instant::now(),
         };
 
         spacecraft.set_mode(SpacecraftMode::Nominal);
@@ -49,7 +54,7 @@ mod tests {
             mode: SpacecraftMode::Nominal,
             battery_voltage: 28.5,
             temperature: 68.0,
-            uptime: 2.0,
+            started_at: Instant::now(),
         };
 
         spacecraft.set_mode(SpacecraftMode::Safe);
@@ -64,7 +69,7 @@ mod tests {
             mode: SpacecraftMode::Nominal,
             battery_voltage: 28.5,
             temperature: 68.0,
-            uptime: 2.0,
+            started_at: Instant::now(),
         };
 
         spacecraft.set_mode(SpacecraftMode::Standby);
