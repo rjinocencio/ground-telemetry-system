@@ -1,4 +1,5 @@
 use gtps::spacecraft::{Spacecraft, SpacecraftMode};
+use gtps::telemetry::TelemetrySnapshot;
 
 fn main() {
     let spacecraft = Spacecraft {
@@ -14,4 +15,9 @@ fn main() {
         "{} initialized in {:?} mode",
         spacecraft.identifier, spacecraft.mode
     );
+    let telemetry = TelemetrySnapshot::from_spacecraft(&spacecraft);
+
+    let json = serde_json::to_string(&telemetry).expect("Failed to serialize telemetry");
+
+    println!("Telemetry: {}", json);
 }

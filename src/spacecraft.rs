@@ -9,7 +9,7 @@ pub struct Spacecraft {
     pub uptime: f64,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone, Copy)]
 pub enum SpacecraftMode {
     Nominal,
     Safe,
