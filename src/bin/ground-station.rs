@@ -86,6 +86,8 @@ fn main() {
 fn print_help() {
     println!(
         r"=== AVAILABLE COMMANDS ===
+connect      Connect to a spacecraft
+connections  List currently retained spacecraft connections
 help, ?      Display this help menu
 status       Check system status
 nominal      Sets mode to nominal

@@ -2,11 +2,11 @@
 
 A Rust-based ground software portfolio project built as a hands-on way to learn Rust while exploring spacecraft telemetry, operator command handling, networking, persistence, and software reliability.
 
-The project is being developed incrementally through a 14-day sprint. Each ticket introduces a new Rust or software-engineering concept while advancing the system toward a ground-station CLI communicating with a simulated spacecraft over TCP and persisting telemetry and command history in PostgreSQL.
+The project is being developed incrementally through a 14-day sprint. Each ticket introduces a new Rust or software engineering concept while advancing the system toward a ground-station CLI communicating with a simulated spacecraft over TCP and persisting telemetry and command history in PostgreSQL.
 
 ## Current Status
 
-Completed through **Day 09 — Define and Serialize Shared Telemetry as JSON**.
+Completed through **Day 10 — Establish Configurable TCP Connections Between Processes**.
 
 Current functionality includes:
 
@@ -26,10 +26,17 @@ Current functionality includes:
 - Telemetry snapshots created from borrowed spacecraft state
 - Round-trip serialization test coverage
 - Real-time spacecraft uptime measured with `Instant`
-- Unix-millisecond timestamps generated for each telemetry snapshot
-- Repeated local telemetry snapshots for observing time progression
+- Unix-millisecond timestamps generated for telemetry snapshots
+- Configurable TCP listener for the spacecraft simulator
+- Runtime `connect [IP:PORT]` command in the ground station
+- Multiple spacecraft connections retained by socket address
+- Multiple ground-station connections accepted by the simulator
+- Graceful TCP connection failure handling
+- Localhost TCP integration tests
 
-The two binaries intentionally do **not** communicate yet. TCP communication, telemetry streaming between processes, command transmission, and PostgreSQL persistence are introduced in later sprint tickets.
+The spacecraft simulator and ground station can now establish real TCP connections.
+
+Telemetry and operator commands are **not yet transmitted over those connections**. The current TCP layer establishes and retains the communication channels that later sprint tickets will use.
 
 ---
 
@@ -37,16 +44,18 @@ The two binaries intentionally do **not** communicate yet. TCP communication, te
 
 The ground station currently recognizes the following commands.
 
-Commands that require spacecraft communication are parsed correctly but report that remote communication is not implemented yet.
+Commands that require spacecraft communication are parsed correctly, but telemetry requests and mode-change commands are not yet transmitted over TCP.
 
-| Command        | Description                                                            |
-| -------------- | ---------------------------------------------------------------------- |
-| `status`       | Request spacecraft status; remote communication is not implemented yet |
-| `help`, `?`    | Display the command help menu                                          |
-| `nominal`      | Request Nominal mode; remote communication is not implemented yet      |
-| `safe`         | Request Safe mode; remote communication is not implemented yet         |
-| `standby`      | Request Standby mode; remote communication is not implemented yet      |
-| `exit`, `quit` | Exit the ground-station application                                    |
+| Command             | Description                                                         |
+| ------------------- | ------------------------------------------------------------------- |
+| `connect [IP:PORT]` | Connect to a spacecraft; uses the default address if omitted        |
+| `connections`       | List currently retained spacecraft connections                      |
+| `status`            | Request spacecraft status; network transmission not implemented yet |
+| `help`, `?`         | Display the command help menu                                       |
+| `nominal`           | Request Nominal mode; network transmission not implemented yet      |
+| `safe`              | Request Safe mode; network transmission not implemented yet         |
+| `standby`           | Request Standby mode; network transmission not implemented yet      |
+| `exit`, `quit`      | Exit the ground-station application                                 |
 
 ---
 
@@ -65,7 +74,7 @@ src/
 
 ### `lib.rs`
 
-Defines the shared library modules used by the binaries:
+Defines the shared library modules used by both binaries:
 
 - `command`
 - `spacecraft`
@@ -77,6 +86,9 @@ Contains the operator command model and parser:
 
 - `Command` enum
 - `Command::parser`
+- Mode-change commands represented with typed spacecraft modes
+- `Connect(Option<String>)` for optional connection addresses
+- `Connections` command
 - Command parser unit tests
 
 ### `spacecraft.rs`
@@ -103,86 +115,160 @@ Contains the transport representation for spacecraft telemetry:
 
 ### `bin/ground-station.rs`
 
-Owns operator-facing CLI behavior:
+Owns operator-facing CLI and spacecraft connection management:
 
 - Reads operator input from stdin
 - Calls `Command::parser`
 - Displays help information
 - Handles blank and unsupported input
 - Handles clean application exit
-- Recognizes spacecraft-related commands without directly owning or mutating spacecraft state
+- Accepts `connect [IP:PORT]`
+- Uses a default spacecraft address when no address is supplied
+- Establishes TCP connections using `TcpStream`
+- Stores spacecraft connections in a `HashMap`
+- Uses socket addresses as connection keys
+- Prevents duplicate connections to the same address
+- Lists retained spacecraft connections
+- Handles failed connection attempts without panicking
+- Does not directly own or mutate spacecraft state
 
 ### `bin/spacecraft-sim.rs`
 
-Owns the simulated spacecraft state:
+Owns simulated spacecraft state and acts as a TCP server:
 
 - Creates the `Spacecraft` instance
 - Initializes spacecraft telemetry values
 - Records simulator start time
-- Creates `TelemetrySnapshot` values from current spacecraft state
-- Serializes telemetry to JSON
-- Generates repeated telemetry snapshots with a delay between samples
-- Prints serialized telemetry locally
-- Does not yet communicate over TCP
+- Accepts a configurable listening address
+- Uses a default localhost address when none is supplied
+- Creates a `TcpListener`
+- Accepts incoming ground-station TCP connections
+- Reports connected peer addresses
+- Retains accepted `TcpStream` values
+- Supports multiple connected ground stations
+- Does not yet transmit telemetry over TCP
 
 ---
 
 ## Running the Project
 
-Run the spacecraft simulator:
+### Start a Spacecraft Simulator
+
+Use the default address:
 
 ```bash
 cargo run --bin spacecraft-sim
 ```
 
-Current simulator output is similar to:
+Default:
+
+```text
+127.0.0.1:7878
+```
+
+Example output:
 
 ```text
 == SPACECRAFT SIMULATOR ==
 SAT-001 initialized in Nominal mode
-
-{"spacecraft_id":"SAT-001","mode":"Nominal","battery_voltage":28.5,"temperature":68.0,"uptime_seconds":0.0001,"timestamp_ms":1780000000123}
-
-{"spacecraft_id":"SAT-001","mode":"Nominal","battery_voltage":28.5,"temperature":68.0,"uptime_seconds":1.0003,"timestamp_ms":1780000001124}
-
-{"spacecraft_id":"SAT-001","mode":"Nominal","battery_voltage":28.5,"temperature":68.0,"uptime_seconds":2.0005,"timestamp_ms":1780000002125}
+Listening on 127.0.0.1:7878
 ```
 
-The simulator currently generates a limited number of local telemetry snapshots separated by a one-second delay so real-time uptime and timestamp behavior can be observed before networking is introduced.
+The simulator then waits for incoming TCP connections.
 
-Run the ground station in a separate terminal:
+A custom listening address can also be supplied:
+
+```bash
+cargo run --bin spacecraft-sim -- 127.0.0.1:9000
+```
+
+Example:
+
+```text
+== SPACECRAFT SIMULATOR ==
+SAT-001 initialized in Nominal mode
+Listening on 127.0.0.1:9000
+```
+
+---
+
+### Start the Ground Station
+
+In another terminal:
 
 ```bash
 cargo run --bin ground-station
 ```
 
-Example ground-station session:
+Example session:
 
 ```text
 == GROUND STATION ==
-> help
-=== AVAILABLE COMMANDS ===
-help, ?      Display this help menu
-status       Check system status
-nominal      Sets mode to nominal
-safe         Sets mode to safe
-standby      Sets mode to standby
-exit, quit   Exit the application
-==========================
+> connect
+Connecting to 127.0.0.1:7878...
+Connected to spacecraft at 127.0.0.1:7878
+
+> connections
+== ACTIVE CONNECTIONS ==
+127.0.0.1:7878
 
 > status
 Spacecraft communication not yet implemented!
 
-> safe
-Spacecraft communication not yet implemented!
-
 > exit
-Exiting application...
+Exiting ground station...
 ```
 
-At this stage, running both programs at the same time does not connect them.
+When the ground station connects, the spacecraft simulator reports the peer connection:
 
-The spacecraft simulator can generate serialized telemetry messages, but transmitting those messages to the ground station is part of the upcoming networking tickets.
+```text
+Ground station connected from 127.0.0.1:54321
+```
+
+The peer port is typically an ephemeral port selected by the operating system for the TCP client.
+
+---
+
+## Connecting to Multiple Spacecraft
+
+Multiple simulator processes can be started on different ports.
+
+Terminal 1:
+
+```bash
+cargo run --bin spacecraft-sim -- 127.0.0.1:7878
+```
+
+Terminal 2:
+
+```bash
+cargo run --bin spacecraft-sim -- 127.0.0.1:7879
+```
+
+Terminal 3:
+
+```bash
+cargo run --bin ground-station
+```
+
+Then connect to both:
+
+```text
+> connect 127.0.0.1:7878
+Connected to spacecraft at 127.0.0.1:7878
+
+> connect 127.0.0.1:7879
+Connected to spacecraft at 127.0.0.1:7879
+
+> connections
+== ACTIVE CONNECTIONS ==
+127.0.0.1:7878
+127.0.0.1:7879
+```
+
+At this stage, socket addresses identify the connections.
+
+Later telemetry will provide spacecraft identifiers such as `SAT-001`, allowing connection management to evolve from raw network addresses toward spacecraft identities.
 
 ---
 
@@ -417,7 +503,7 @@ Added:
 - Dedicated command parsing
 - Separate `Empty` and `Invalid` command states
 
-Spacecraft state remains alive outside the command loop so mode changes persist between commands.
+Spacecraft state remained alive outside the command loop so mode changes persisted between commands.
 
 ### Concepts learned
 
@@ -507,7 +593,7 @@ The spacecraft simulator now owns the simulated `Spacecraft` state, while the gr
 
 Shared types remain in library modules exposed through `lib.rs`.
 
-The two programs intentionally do not communicate yet. This ticket establishes the process boundary that later tickets will connect using serialized telemetry and TCP.
+The two programs intentionally did not communicate yet. This ticket established the process boundary that later tickets could connect using serialized telemetry and TCP.
 
 ### Concepts learned
 
@@ -538,7 +624,7 @@ The two programs intentionally do not communicate yet. This ticket establishes t
 
 Introduced a dedicated `TelemetrySnapshot` type to represent spacecraft telemetry intended to cross the process boundary.
 
-The spacecraft simulator continues to own the internal `Spacecraft` state. A telemetry snapshot is created from a borrowed `&Spacecraft`, allowing telemetry to be exported without consuming or transferring ownership of the simulator state.
+The spacecraft simulator continues to own the internal `Spacecraft` state. A telemetry snapshot is created from a borrowed `&Spacecraft`, allowing telemetry to be exported without consuming or transferring ownership of simulator state.
 
 The snapshot includes:
 
@@ -551,7 +637,7 @@ The snapshot includes:
 
 Serde is used to serialize `TelemetrySnapshot` into compact JSON and deserialize JSON back into the typed Rust representation.
 
-Telemetry snapshots also include real timing information:
+Telemetry snapshots include real timing information:
 
 - `uptime_seconds` is calculated from a monotonic `Instant` recorded when the spacecraft simulator starts.
 - `timestamp_ms` records the wall-clock time when each telemetry snapshot is created as Unix milliseconds.
@@ -570,7 +656,7 @@ TelemetrySnapshot
 
 without changing the telemetry values.
 
-The spacecraft simulator also generates multiple snapshots with a short delay between each one so changes in uptime and timestamp can be observed locally before TCP transport is introduced.
+During development, the spacecraft simulator also generated multiple local snapshots with a delay between samples so real-time uptime and timestamp behavior could be observed before networking was introduced.
 
 ### Concepts learned
 
@@ -615,36 +701,226 @@ The spacecraft simulator also generates multiple snapshots with a short delay be
 
 ---
 
-## Planned Sprint Direction
+## Day 10 — Establish Configurable TCP Connections Between Processes
 
-The project now has two separate Rust processes with a shared telemetry representation ready to cross the process boundary:
+**Jira:** `GTPS-11`
+
+### What the ticket was about
+
+Established real TCP connectivity between the independently running spacecraft simulator and ground station.
+
+The spacecraft simulator now acts as a TCP server. It binds to a configurable socket address, listens for incoming ground-station connections, accepts them, and retains the resulting `TcpStream` values.
+
+The ground station acts as a TCP client and can establish spacecraft connections at runtime using:
 
 ```text
-┌─────────────────────┐
-│ Spacecraft Simulator│
-│                     │
-│ Spacecraft State    │
-│        ↓            │
-│ TelemetrySnapshot   │
-│        ↓            │
-│       JSON          │
-└──────────┬──────────┘
-           │
-           │ future TCP
-           │
-┌──────────▼──────────┐
-│   Ground Station    │
-│                     │
-│ CLI + Commands      │
-│ Telemetry Receiver  │
-│ PostgreSQL Storage  │
-└─────────────────────┘
+connect [IP:PORT]
 ```
+
+The address argument is optional. If no address is supplied, the ground station uses its default spacecraft address.
+
+Multiple spacecraft connections can be retained by the ground station and accessed using their socket address.
+
+The spacecraft simulator can also accept and retain multiple ground-station connections.
+
+No telemetry or commands are transmitted through the TCP streams yet. This ticket establishes and verifies the transport layer that future tickets will use.
+
+### Ground Station Connection Model
+
+The ground station stores spacecraft connections in a:
+
+```text
+HashMap<String, TcpStream>
+```
+
+Conceptually:
+
+```text
+"127.0.0.1:7878" → TcpStream
+"127.0.0.1:7879" → TcpStream
+```
+
+Using a `HashMap` allows a specific spacecraft connection to be retrieved later using its configured socket address.
+
+Successful connections remain owned by the ground-station process so they are not dropped after the `connect` command completes.
+
+### Spacecraft Simulator Connection Model
+
+The spacecraft simulator owns a `TcpListener` and retains accepted ground-station streams in a:
+
+```text
+Vec<TcpStream>
+```
+
+At this stage, the simulator only needs to retain connected clients rather than retrieve a specific ground station by identity.
+
+Conceptually:
+
+```text
+TcpListener
+    │
+    ├── TcpStream → Ground Station 1
+    ├── TcpStream → Ground Station 2
+    └── TcpStream → Ground Station 3
+```
+
+The simulator uses `TcpListener::accept` to accept one connection at a time.
+
+The earlier `TcpListener::incoming` approach was also explored. `incoming()` provides an iterator that repeatedly performs the connection-accepting behavior, while `accept()` exposes one connection operation directly and is easier to isolate for testing.
+
+### Error Handling
+
+TCP operations return `Result` because connection failures are expected runtime conditions rather than necessarily programming errors.
+
+Examples include:
+
+- Invalid socket addresses
+- Connection refused
+- Port already in use
+- Failed connection acceptance
+
+Network helpers return errors to their caller instead of panicking.
+
+The `?` operator is used where appropriate to propagate an `io::Error` to the caller.
+
+For example:
+
+```rust
+let stream = TcpStream::connect(address)?;
+```
+
+is conceptually equivalent to:
+
+```rust
+let stream = match TcpStream::connect(address) {
+    Ok(stream) => stream,
+    Err(error) => return Err(error),
+};
+```
+
+### Testing
+
+TCP functionality is tested using real localhost sockets rather than mocked networking.
+
+Tests bind to:
+
+```text
+127.0.0.1:0
+```
+
+Port `0` asks the operating system to select an available ephemeral port for the test, avoiding dependence on a hard-coded test port.
+
+Networking tests cover:
+
+- Successful TCP listener binding
+- Invalid bind-address errors
+- Successful spacecraft connection establishment
+- Connection retention
+- Duplicate ground-station connection prevention
+- Invalid connection-address errors
+- Accepting a ground-station connection
+- Accepting multiple ground-station connections
+
+Threads are used in connection tests because `TcpListener::accept()` blocks until a client connects.
+
+### Concepts learned
+
+- TCP client/server architecture
+- `TcpListener`
+- `TcpStream`
+- Binding a TCP server to an address
+- Accepting incoming TCP connections
+- Connecting to a remote socket
+- Configurable IP addresses and ports
+- Reading command-line arguments with `std::env::args`
+- Default configuration values
+- Optional command arguments with `Option<String>`
+- Enum variants that contain data
+- Parsing CLI commands with `split_whitespace`
+- Tuple pattern matching
+- `HashMap<String, TcpStream>` for addressable spacecraft connections
+- `Vec<TcpStream>` for retaining ground-station connections
+- Keeping network connections alive through ownership
+- Moving `TcpStream` values into collections
+- Borrowing an address with `&str`
+- Creating owned `String` keys only when needed
+- `Result`
+- `io::Error`
+- Propagating errors with the `?` operator
+- Manually handling `Result` with `match`
+- Distinguishing command parsing errors from runtime network errors
+- `TcpListener::accept`
+- `TcpListener::incoming`
+- Retrieving peer socket addresses
+- Blocking network operations
+- Ephemeral client ports
+- Using port `0` for isolated network tests
+- Localhost TCP integration testing
+- Using threads to coordinate client/server tests
+
+### Official Rust references
+
+- [`TcpListener`](https://doc.rust-lang.org/std/net/struct.TcpListener.html)
+- [`TcpListener::bind`](https://doc.rust-lang.org/std/net/struct.TcpListener.html#method.bind)
+- [`TcpListener::accept`](https://doc.rust-lang.org/std/net/struct.TcpListener.html#method.accept)
+- [`TcpListener::incoming`](https://doc.rust-lang.org/std/net/struct.TcpListener.html#method.incoming)
+- [`TcpStream`](https://doc.rust-lang.org/std/net/struct.TcpStream.html)
+- [`TcpStream::connect`](https://doc.rust-lang.org/std/net/struct.TcpStream.html#method.connect)
+- [`TcpStream::peer_addr`](https://doc.rust-lang.org/std/net/struct.TcpStream.html#method.peer_addr)
+- [`SocketAddr`](https://doc.rust-lang.org/std/net/enum.SocketAddr.html)
+- [`HashMap`](https://doc.rust-lang.org/std/collections/struct.HashMap.html)
+- [`Vec`](https://doc.rust-lang.org/std/vec/struct.Vec.html)
+- [`std::env::args`](https://doc.rust-lang.org/std/env/fn.args.html)
+- [`Option`](https://doc.rust-lang.org/std/option/enum.Option.html)
+- [`Result`](https://doc.rust-lang.org/std/result/enum.Result.html)
+- [Rust Book — Recoverable Errors with `Result`](https://doc.rust-lang.org/book/ch09-02-recoverable-errors-with-result.html)
+- [Rust Book — Patterns and Matching](https://doc.rust-lang.org/book/ch19-00-patterns.html)
+- [`thread::spawn`](https://doc.rust-lang.org/std/thread/fn.spawn.html)
+- [Rust Book — Automated Tests](https://doc.rust-lang.org/book/ch11-00-testing.html)
+
+---
+
+## Planned Sprint Direction
+
+The project now has a real TCP communication boundary between the spacecraft simulator and ground station:
+
+```text
+┌────────────────────────┐
+│  Spacecraft Simulator  │
+│                        │
+│  Spacecraft State      │
+│        ↓               │
+│  TelemetrySnapshot     │
+│        ↓               │
+│       JSON             │
+│                        │
+│     TcpListener        │
+└───────────┬────────────┘
+            │
+            │ TCP connection established
+            │
+┌───────────▼────────────┐
+│     Ground Station     │
+│                        │
+│ CLI + Command Parser   │
+│                        │
+│ HashMap of TcpStreams  │
+│                        │
+│ Telemetry Receiver     │
+│ PostgreSQL Storage     │
+│     (upcoming)         │
+└────────────────────────┘
+```
+
+The transport connection now exists.
+
+The next step is to begin using the TCP streams to carry application data.
 
 Upcoming work introduces:
 
-- TCP networking over localhost
-- Continuous telemetry streaming between processes
+- Continuous telemetry streaming over TCP
+- Message framing for serialized telemetry
+- Telemetry deserialization in the ground station
 - Command transmission
 - Command acknowledgements
 - PostgreSQL telemetry persistence
@@ -655,9 +931,11 @@ Upcoming work introduces:
 Potential post-sprint extensions include:
 
 - Async Rust
+- Tokio
 - WebSocket telemetry broadcasting
 - Browser-based operator interface
 - Multiple simulated spacecraft
+- Spacecraft identity-based connection management
 - Multiple ground-station clients
 - Fault injection and simulated spacecraft anomalies
 - Remote deployment for interactive portfolio demonstrations
