@@ -65,13 +65,7 @@ fn accept_connection(listener: &TcpListener) -> io::Result<(TcpStream, SocketAdd
 
 fn stream_telemetry(mut stream: TcpStream, spacecraft: Arc<Spacecraft>) {
     loop {
-        let telemetry = TelemetrySnapshot::from_spacecraft(&spacecraft);
-
-        let json = serde_json::to_string(&telemetry).expect("Failed to serialize telemetry");
-
-        let message = format!("{json}\n");
-
-        if let Err(error) = stream.write_all(message.as_bytes()) {
+        if let Err(error) = send_telemetry(&mut stream, &spacecraft) {
             println!("Telemetry connection lost: {error}");
             break;
         }
@@ -80,10 +74,22 @@ fn stream_telemetry(mut stream: TcpStream, spacecraft: Arc<Spacecraft>) {
     }
 }
 
+fn send_telemetry(stream: &mut TcpStream, spacecraft: &Spacecraft) -> io::Result<()> {
+    let telemetry = TelemetrySnapshot::from_spacecraft(spacecraft);
+
+    let json = serde_json::to_string(&telemetry).map_err(io::Error::other)?;
+
+    writeln!(stream, "{json}")?;
+
+    Ok(())
+}
+
 /* Test */
 
 #[cfg(test)]
 mod tests {
+    use std::io::{BufRead, BufReader};
+
     use super::*;
 
     #[test]
@@ -123,5 +129,50 @@ mod tests {
         assert!(peer_address.ip().is_loopback());
 
         client.join().expect("Client thread failed");
+    }
+
+    #[test]
+    fn sends_newline_delimited_telemetry_over_tcp() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind test listener");
+
+        let address = listener
+            .local_addr()
+            .expect("Failed to get test listener address");
+
+        let spacecraft = Spacecraft {
+            identifier: String::from("SAT-001"),
+            mode: SpacecraftMode::Nominal,
+            battery_voltage: 28.5,
+            temperature: 68.0,
+            started_at: Instant::now(),
+        };
+
+        let sender = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("Failed to accept test connection");
+
+            send_telemetry(&mut stream, &spacecraft).expect("Failed to send test telemetry");
+        });
+
+        let stream = TcpStream::connect(address).expect("Failed to connect test ground station");
+
+        let mut reader = BufReader::new(stream);
+        let mut line = String::new();
+
+        let bytes_read = reader
+            .read_line(&mut line)
+            .expect("Failed to read telemetry");
+
+        assert!(bytes_read > 0);
+        assert!(line.ends_with('\n'));
+
+        let telemetry: TelemetrySnapshot =
+            serde_json::from_str(line.trim_end()).expect("Failed to deserialize telemetry");
+
+        assert_eq!(telemetry.spacecraft_id, "SAT-001");
+        assert_eq!(telemetry.mode, SpacecraftMode::Nominal);
+        assert_eq!(telemetry.battery_voltage, 28.5);
+        assert_eq!(telemetry.temperature, 68.0);
+
+        sender.join().expect("Telemetry sender thread failed");
     }
 }

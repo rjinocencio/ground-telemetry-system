@@ -221,4 +221,53 @@ mod tests {
 
         server.join().expect("Server thread failed");
     }
+
+    #[test]
+    fn removes_connection_when_spacecraft_disconnects() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind test listener");
+
+        let server_address = listener
+            .local_addr()
+            .expect("Failed to get test listener address");
+
+        let address = server_address.to_string();
+
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("Failed to accept test connection");
+
+            drop(stream);
+        });
+
+        let stream =
+            TcpStream::connect(server_address).expect("Failed to connect to test spacecraft");
+
+        let receiver_stream = stream.try_clone().expect("Failed to clone test stream");
+
+        let connections = Arc::new(Mutex::new(HashMap::<String, TcpStream>::new()));
+
+        {
+            let mut connections = connections
+                .lock()
+                .expect("Connection registry lock poisoned");
+
+            connections.insert(address.clone(), stream);
+        }
+
+        let receiver_connections = Arc::clone(&connections);
+        let receiver_address = address.clone();
+
+        let receiver = thread::spawn(move || {
+            receive_telemetry(receiver_stream, receiver_address, receiver_connections);
+        });
+
+        server.join().expect("Test spacecraft thread failed");
+
+        receiver.join().expect("Telemetry receiver thread failed");
+
+        let connections = connections
+            .lock()
+            .expect("Connection registry lock poisoned");
+
+        assert!(!connections.contains_key(&address));
+    }
 }
