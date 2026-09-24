@@ -4,7 +4,7 @@ use gtps::telemetry::TelemetrySnapshot;
 use std::io::{self, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{env, thread};
 
 const DEFAULT_ADDRESS: &str = "127.0.0.1:7878";
@@ -14,8 +14,12 @@ fn main() {
         .nth(1)
         .unwrap_or_else(|| String::from(DEFAULT_ADDRESS));
 
+    let identifier: String = env::args()
+        .nth(2)
+        .unwrap_or_else(|| String::from("SAT-001"));
+
     let spacecraft = Arc::new(Spacecraft {
-        identifier: String::from("SAT-001"),
+        identifier,
         mode: SpacecraftMode::Nominal,
         battery_voltage: 28.5,
         temperature: 68.0,
@@ -42,10 +46,12 @@ fn main() {
     loop {
         match accept_connection(&listener) {
             Ok((stream, peer_address)) => {
-                println!("Ground station connected from {peer_address}");
+                let timestamp_ms = get_timestamp_ms();
+
+                println!("[{timestamp_ms}] Ground station connected from {peer_address}");
                 let spacecraft = Arc::clone(&spacecraft);
 
-                thread::spawn(move || stream_telemetry(stream, spacecraft));
+                thread::spawn(move || stream_telemetry(stream, spacecraft, peer_address));
             }
 
             Err(error) => {
@@ -63,19 +69,30 @@ fn accept_connection(listener: &TcpListener) -> io::Result<(TcpStream, SocketAdd
     listener.accept()
 }
 
-fn stream_telemetry(mut stream: TcpStream, spacecraft: Arc<Spacecraft>) {
+fn stream_telemetry(mut stream: TcpStream, spacecraft: Arc<Spacecraft>, peer_address: SocketAddr) {
+    let mut sequence_number = 0u64;
+
     loop {
-        if let Err(error) = send_telemetry(&mut stream, &spacecraft) {
-            println!("Telemetry connection lost: {error}");
+        if let Err(error) = send_telemetry(&mut stream, &spacecraft, sequence_number) {
+            let timestamp_ms = get_timestamp_ms();
+
+            println!("[{timestamp_ms}] Telemetry connection to {peer_address} lost: {error}");
+
             break;
         }
+
+        sequence_number += 1;
 
         thread::sleep(Duration::from_secs(1));
     }
 }
 
-fn send_telemetry(stream: &mut TcpStream, spacecraft: &Spacecraft) -> io::Result<()> {
-    let telemetry = TelemetrySnapshot::from_spacecraft(spacecraft);
+fn send_telemetry(
+    stream: &mut TcpStream,
+    spacecraft: &Spacecraft,
+    sequence_number: u64,
+) -> io::Result<()> {
+    let telemetry = TelemetrySnapshot::from_spacecraft(spacecraft, sequence_number);
 
     let json = serde_json::to_string(&telemetry).map_err(io::Error::other)?;
 
@@ -84,8 +101,17 @@ fn send_telemetry(stream: &mut TcpStream, spacecraft: &Spacecraft) -> io::Result
     Ok(())
 }
 
-/* Test */
+fn get_timestamp_ms() -> u64 {
+    u64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("System time is before Unix epoch")
+            .as_millis(),
+    )
+    .expect("Timestamp exceeds u64 range")
+}
 
+/* Test */
 #[cfg(test)]
 mod tests {
     use std::io::{BufRead, BufReader};
@@ -150,7 +176,7 @@ mod tests {
         let sender = thread::spawn(move || {
             let (mut stream, _) = listener.accept().expect("Failed to accept test connection");
 
-            send_telemetry(&mut stream, &spacecraft).expect("Failed to send test telemetry");
+            send_telemetry(&mut stream, &spacecraft, 68).expect("Failed to send test telemetry");
         });
 
         let stream = TcpStream::connect(address).expect("Failed to connect test ground station");
@@ -172,6 +198,7 @@ mod tests {
         assert_eq!(telemetry.mode, SpacecraftMode::Nominal);
         assert_eq!(telemetry.battery_voltage, 28.5);
         assert_eq!(telemetry.temperature, 68.0);
+        assert_eq!(telemetry.sequence_number, 68);
 
         sender.join().expect("Telemetry sender thread failed");
     }

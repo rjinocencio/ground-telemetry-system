@@ -12,14 +12,18 @@ pub struct TelemetrySnapshot {
     pub temperature: f64,
     pub uptime_seconds: f64,
     pub timestamp_ms: u64,
+    pub sequence_number: u64,
 }
 
 impl TelemetrySnapshot {
-    pub fn from_spacecraft(spacecraft: &Spacecraft) -> Self {
-        let timestamp_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("System time is before Unix epoch")
-            .as_millis() as u64;
+    pub fn from_spacecraft(spacecraft: &Spacecraft, sequence_number: u64) -> Self {
+        let timestamp_ms = u64::try_from(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("System time is before Unix epoch")
+                .as_millis(),
+        )
+        .expect("Timestamp exceeds u64 range");
 
         Self {
             spacecraft_id: spacecraft.identifier.clone(),
@@ -28,6 +32,7 @@ impl TelemetrySnapshot {
             temperature: spacecraft.temperature,
             uptime_seconds: spacecraft.uptime(),
             timestamp_ms,
+            sequence_number,
         }
     }
 }
@@ -48,7 +53,7 @@ mod tests {
             started_at: Instant::now(),
         };
 
-        let telemetry = TelemetrySnapshot::from_spacecraft(&spacecraft);
+        let telemetry = TelemetrySnapshot::from_spacecraft(&spacecraft, 75);
 
         let json = serde_json::to_string(&telemetry).expect("Failed to serialize telemetry");
 

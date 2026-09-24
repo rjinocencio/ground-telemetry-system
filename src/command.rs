@@ -34,7 +34,6 @@ impl Command {
             ("exit" | "quit", None) => Command::Exit,
             ("connect", address) => Command::Connect(address.map(String::from)),
             ("connections", None) => Command::Connections,
-            ("", None) => Command::Empty,
             _ => Command::Invalid,
         }
     }
